@@ -18,7 +18,7 @@ jobs:
       - name: Validate configs
         run: |
           docker compose config -q
-          docker run --rm -v "$PWD/haproxy:/cfg:ro" haproxy:3.0-alpine haproxy -c -f /cfg/haproxy.cfg
+          docker run --rm -v "$PWD/haproxy:/cfg:ro" haproxy:3.0.30-alpine haproxy -c -f /cfg/haproxy.cfg
       - name: Start stack
         run: docker compose up -d --wait --wait-timeout 120
       - name: Edge tests (TLS, failover, rate limit)
