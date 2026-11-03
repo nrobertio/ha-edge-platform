@@ -1,0 +1,51 @@
+name: ha-edge-platform
+
+x-app: &app
+  image: traefik/whoami:v1.10.3
+  restart: unless-stopped
+
+services:
+  app1:
+    <<: *app
+    hostname: app1
+  app2:
+    <<: *app
+    hostname: app2
+  app3:
+    <<: *app
+    hostname: app3
+  api:
+    <<: *app
+    hostname: api
+
+  haproxy:
+    image: haproxy:3.0-alpine
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    ports:
+      - "127.0.0.1:8404:8404"   # stats page, local only
+    depends_on: [app1, app2, app3]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8404/stats >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  nginx:
+    image: nginx:1.27.2-alpine
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certs:/etc/nginx/certs:ro
+    ports:
+      - "127.0.0.1:8080:80"
+      - "127.0.0.1:8443:443"
+    depends_on:
+      haproxy:
+        condition: service_healthy
+      api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
