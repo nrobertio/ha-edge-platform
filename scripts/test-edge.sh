@@ -44,7 +44,9 @@ pass "app2 down: 40 requests, zero errors, traffic only on app1 app3"
 docker compose start app2 >/dev/null
 back=no
 for _ in $(seq 1 30); do
-  if for _ in $(seq 1 6); do backend; done | grep -qx app2; then back=yes; break; fi
+  # capture first: grep -q exits early, and with pipefail the broken pipe would fail the check
+  seen=$(for _ in $(seq 1 6); do backend; done)
+  if grep -qx app2 <<< "$seen"; then back=yes; break; fi
   sleep 1
 done
 [ "$back" = "yes" ] || fail "app2 did not rejoin the pool"
