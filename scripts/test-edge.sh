@@ -57,5 +57,7 @@ pass "/api/ routed to the api service"
 codes=$(for _ in $(seq 1 30); do "${C[@]}" -o /dev/null -w '%{http_code}\n' "$URL/api/"; done)
 ok=$(echo "$codes" | awk '$1==200{n++} END{print n+0}')
 limited=$(echo "$codes" | awk '$1==429{n++} END{print n+0}')
-[ "$ok" -ge 1 ] && [ "$limited" -ge 1 ] || fail "rate limit: ${ok}x200 ${limited}x429"
+if [ "$ok" -lt 1 ] || [ "$limited" -lt 1 ]; then
+  fail "rate limit: ${ok}x200 ${limited}x429"
+fi
 pass "rate limit on /api/: ${ok}x200, ${limited}x429"
