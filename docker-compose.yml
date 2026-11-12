@@ -3,6 +3,26 @@ name: ha-edge-platform
 x-app: &app
   image: traefik/whoami:v1.10.3
   restart: unless-stopped
+  networks: [edge]
+
+x-lb: &lb
+  build:
+    context: ./docker/haproxy-ka
+  image: ha-edge-platform/haproxy-keepalived:3.0.30
+  cap_add: [NET_ADMIN, NET_BROADCAST, NET_RAW]
+  depends_on: [app1, app2, app3]
+  healthcheck:
+    test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8404/stats >/dev/null"]
+    interval: 5s
+    timeout: 3s
+    retries: 10
+
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+          ip_range: 172.30.0.128/25   # dynamic IPs only from .128 up, so .11 .12 and the VIP .100 stay free
 
 services:
   app1:
@@ -18,29 +38,44 @@ services:
     <<: *app
     hostname: api
 
-  haproxy:
-    image: haproxy:3.0.30-alpine
+  # Two load balancers sharing the floating IP 172.30.0.100 with VRRP.
+  lb1:
+    <<: *lb
+    hostname: lb1
     volumes:
       - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./keepalived/lb1.conf:/etc/keepalived/keepalived.conf:ro
+    networks:
+      edge:
+        ipv4_address: 172.30.0.11
     ports:
-      - "127.0.0.1:8404:8404"   # stats page, local only
-    depends_on: [app1, app2, app3]
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8404/stats >/dev/null"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+      - "127.0.0.1:8404:8404"   # lb1 stats page, local only
+
+  lb2:
+    <<: *lb
+    hostname: lb2
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./keepalived/lb2.conf:/etc/keepalived/keepalived.conf:ro
+    networks:
+      edge:
+        ipv4_address: 172.30.0.12
+    ports:
+      - "127.0.0.1:8405:8404"   # lb2 stats page, local only
 
   nginx:
     image: nginx:1.27.2-alpine
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./certs:/etc/nginx/certs:ro
+    networks: [edge]
     ports:
       - "127.0.0.1:8080:80"
       - "127.0.0.1:8443:443"
     depends_on:
-      haproxy:
+      lb1:
+        condition: service_healthy
+      lb2:
         condition: service_healthy
       api:
         condition: service_started
